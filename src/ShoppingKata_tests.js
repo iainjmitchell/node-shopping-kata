@@ -1,5 +1,5 @@
 (function() {
-  var Checkout, EventEmitter, Scanner, Totaller, assert, prices, vows,
+  var Bill, Checkout, Discounter, EventEmitter, Scanner, assert, discounts, prices, vows,
     __hasProp = Object.prototype.hasOwnProperty,
     __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor; child.__super__ = parent.prototype; return child; };
 
@@ -16,11 +16,22 @@
     'D': 15
   };
 
+  discounts = {
+    'A': {
+      quantity: 3,
+      amount: 20
+    },
+    'B': {
+      quantity: 2,
+      amount: 15
+    }
+  };
+
   vows.describe('checkout tests').addBatch({
     'no special offers - one item': {
       'when one A': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('A').total();
+          new Checkout(this.callback, prices, discounts).scan('A').total();
           return;
         },
         'total is 50': function(err, total) {
@@ -29,7 +40,7 @@
       },
       'when one B': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('B').total();
+          new Checkout(this.callback, prices, discounts).scan('B').total();
           return;
         },
         'total is 30': function(err, total) {
@@ -38,7 +49,7 @@
       },
       'when one C': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('C').total();
+          new Checkout(this.callback, prices, discounts).scan('C').total();
           return;
         },
         'total is 30': function(err, total) {
@@ -47,7 +58,7 @@
       },
       'when one D': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('D').total();
+          new Checkout(this.callback, prices, discounts).scan('D').total();
           return;
         },
         'total is 30': function(err, total) {
@@ -58,7 +69,7 @@
     'no special offers - multiple items': {
       'when two A': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('A').scan('A').total();
+          new Checkout(this.callback, prices, discounts).scan('A').scan('A').total();
           return;
         },
         'total is 100': function(err, total) {
@@ -67,37 +78,80 @@
       },
       'when one A and one B': {
         topic: function() {
-          new Checkout(this.callback, prices).scan('A').scan('B').total();
+          new Checkout(this.callback, prices, discounts).scan('A').scan('B').total();
           return;
         },
         'total is 80': function(err, total) {
           return assert.equal(total, 80);
         }
       }
-    }
-  }, 'special offers', {
-    'when three A': {
-      topic: function() {
-        new Checkout(this.callback, prices).scan('A').scan('A').scan('A').total();
-        return;
+    },
+    'special offers': {
+      'when three A': {
+        topic: function() {
+          new Checkout(this.callback, prices, discounts).scan('A').scan('A').scan('A').total();
+          return;
+        },
+        'total is 130': function(err, total) {
+          return assert.equal(total, 130);
+        }
       },
-      'total is 130': function(err, total) {
-        return assert.equal(total, 130);
+      'when two B': {
+        topic: function() {
+          new Checkout(this.callback, prices, discounts).scan('B').scan('B').total();
+          return;
+        },
+        'total is 45': function(err, total) {
+          return assert.equal(total, 45);
+        }
+      },
+      'when six A': {
+        topic: function() {
+          new Checkout(this.callback, prices, discounts).scan('A').scan('A').scan('A').scan('A').scan('A').scan('A').total();
+          return;
+        },
+        'total is 260': function(err, total) {
+          return assert.equal(total, 260);
+        }
+      },
+      'when three A and two B': {
+        topic: function() {
+          new Checkout(this.callback, prices, discounts).scan('B').scan('B').scan('A').scan('A').scan('A').total();
+          return;
+        },
+        'total is 175': function(err, total) {
+          return assert.equal(total, 175);
+        }
+      },
+      'when two A mixed with 1 C': {
+        topic: function() {
+          new Checkout(this.callback, prices, discounts).scan('A').scan('C').scan('A').total();
+          return;
+        },
+        'total is 120': function(err, total) {
+          return assert.equal(total, 120);
+        }
       }
     }
   }).run();
 
   Checkout = (function() {
 
-    function Checkout(onTotal, prices) {
-      var totaller;
-      this.prices = prices;
-      totaller = new Totaller(onTotal);
-      this.scanner = new Scanner(this.prices);
-      this.scanner.on('NewItem', function(itemInfo) {
-        return totaller.add(itemInfo.price);
+    function Checkout(onTotal, prices, discounts) {
+      var bill, discounter;
+      bill = new Bill(onTotal);
+      discounter = new Discounter(discounts);
+      discounter.on('Discount', function(amount) {
+        return bill.deduct(amount);
       });
-      this.totaller = totaller;
+      this.scanner = new Scanner(prices);
+      this.scanner.on('NewItem', function(itemInfo) {
+        return bill.add(itemInfo.price);
+      });
+      this.scanner.on('NewItem', function(itemInfo) {
+        return discounter.newItem(itemInfo.item);
+      });
+      this.bill = bill;
     }
 
     Checkout.prototype.scan = function(item) {
@@ -106,7 +160,7 @@
     };
 
     Checkout.prototype.total = function() {
-      return this.totaller.total();
+      return this.bill.total();
     };
 
     return Checkout;
@@ -132,23 +186,65 @@
 
   })(EventEmitter);
 
-  Totaller = (function() {
+  Bill = (function() {
 
-    function Totaller(onTotal) {
+    function Bill(onTotal) {
       this.onTotal = onTotal;
       this.totalAmount = 0;
     }
 
-    Totaller.prototype.add = function(price) {
+    Bill.prototype.add = function(price) {
       return this.totalAmount += price;
     };
 
-    Totaller.prototype.total = function() {
+    Bill.prototype.deduct = function(amount) {
+      return this.totalAmount -= amount;
+    };
+
+    Bill.prototype.total = function() {
       return this.onTotal(void 0, this.totalAmount);
     };
 
-    return Totaller;
+    return Bill;
 
   })();
+
+  Discounter = (function(_super) {
+
+    __extends(Discounter, _super);
+
+    function Discounter(discounts) {
+      this.discounts = discounts;
+      this.itemCount = {};
+    }
+
+    Discounter.prototype.newItem = function(item) {
+      if (this.hasDiscount(item)) return this.makeDiscount(item);
+    };
+
+    Discounter.prototype.hasDiscount = function(item) {
+      return this.getDiscount(item) !== void 0;
+    };
+
+    Discounter.prototype.getDiscount = function(item) {
+      return this.discounts[item];
+    };
+
+    Discounter.prototype.makeDiscount = function(item) {
+      var discount;
+      this.incrementItemCount(item);
+      discount = this.getDiscount(item);
+      if (this.itemCount[item] % discount.quantity === 0) {
+        return this.emit('Discount', discount.amount);
+      }
+    };
+
+    Discounter.prototype.incrementItemCount = function(item) {
+      return this.itemCount[item] = this.itemCount[item] ? this.itemCount[item] + 1 : 1;
+    };
+
+    return Discounter;
+
+  })(EventEmitter);
 
 }).call(this);
