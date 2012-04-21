@@ -48,6 +48,13 @@ vows.describe('checkout tests')
 					undefined
 				'total is 80': (err, total) ->
 					assert.equal total, 80
+		'special offers'
+			'when three A': 
+				topic: () -> 
+					new Checkout(@callback, prices).scan('A').scan('A').scan('A').total()
+					undefined
+				'total is 130': (err, total) ->
+					assert.equal total, 130
 	)
 	.run()
 
@@ -58,13 +65,13 @@ class Checkout
 		@scanner = new Scanner(@prices)
 		@scanner.on 'NewItem', (itemInfo) ->
 			totaller.add(itemInfo.price)
-		@totaller1 = totaller
+		@totaller = totaller
 
 	scan: (item) -> 
 		@scanner.scan(item)
 		this
 	total: () ->
-		@totaller1.total()
+		@totaller.total()
 
 
 class Scanner extends EventEmitter

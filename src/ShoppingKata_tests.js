@@ -75,6 +75,16 @@
         }
       }
     }
+  }, 'special offers', {
+    'when three A': {
+      topic: function() {
+        new Checkout(this.callback, prices).scan('A').scan('A').scan('A').total();
+        return;
+      },
+      'total is 130': function(err, total) {
+        return assert.equal(total, 130);
+      }
+    }
   }).run();
 
   Checkout = (function() {
@@ -87,7 +97,7 @@
       this.scanner.on('NewItem', function(itemInfo) {
         return totaller.add(itemInfo.price);
       });
-      this.totaller1 = totaller;
+      this.totaller = totaller;
     }
 
     Checkout.prototype.scan = function(item) {
@@ -96,7 +106,7 @@
     };
 
     Checkout.prototype.total = function() {
-      return this.totaller1.total();
+      return this.totaller.total();
     };
 
     return Checkout;
